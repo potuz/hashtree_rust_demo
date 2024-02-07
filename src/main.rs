@@ -1,0 +1,19 @@
+extern crate hashtree_rust_demo;
+mod merkleize;
+
+// use merkleize::sparse_hash_tree;
+
+fn main() {
+    // Initialize the library
+    let cpu_detected = hashtree_rust_demo::init();
+    if cpu_detected == 0 {
+        println!("hashtree initialization failed");
+        return;
+    }
+
+    let chunks = [0u8; 1 << 20];
+    let hash_tree = merkleize::sparse_hashtree(&chunks[..], 0);
+
+    println!("Hashed data: {:?}", &hash_tree[hash_tree.len()-32..]);
+    println!("Zero hash: {:?}", &merkleize::ZERO_HASH_ARRAY[15][..]);
+}
