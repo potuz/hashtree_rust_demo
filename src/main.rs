@@ -12,7 +12,7 @@ fn main() {
         return;
     }
 
-    let chunks = [0u8; 1 << 22];
+    let chunks = vec![0u8; 1 << 22];
 
     let start = Instant::now();
     let hash_tree = merkleize::sparse_hashtree(&chunks, 0);
