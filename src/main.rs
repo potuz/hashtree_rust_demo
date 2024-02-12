@@ -12,13 +12,13 @@ fn main() {
         return;
     }
 
-    let chunks = [0u8; 1 << 20];
+    let chunks = [0u8; 1 << 22];
 
     let start = Instant::now();
     let hash_tree = merkleize::sparse_hashtree(&chunks, 0);
     let duration = start.elapsed();
 
     println!("Hashed data: {:?}", &hash_tree[hash_tree.len() - 32..]);
-    println!("Zero hash: {:?}", &merkleize::ZERO_HASH_ARRAY[15][..]);
+    println!("Zero hash: {:?}", &merkleize::ZERO_HASH_ARRAY[17][..]);
     println!("Time elapsed: {:?}", duration.as_micros());
 }
