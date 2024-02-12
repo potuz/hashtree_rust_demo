@@ -1,15 +1,17 @@
+extern crate rayon;
+
 use hashtree_rust_demo::hash;
 use lazy_static::lazy_static;
 
 const BYTES_PER_CHUNK: usize = 32;
 
 lazy_static! {
-    pub static ref ZERO_HASH_ARRAY: [[u8;32];28] = {
-        let mut arr = [[0u8; 32];28];
+    pub static ref ZERO_HASH_ARRAY: [[u8; 32]; 28] = {
+        let mut arr = [[0u8; 32]; 28];
         for i in 1..arr.len() {
             {
-                let mut temp_arr = [0u8;32];
-                hash_2_chunks( &mut temp_arr[..], &arr[i-1], &arr[i-1]);
+                let mut temp_arr = [0u8; 32];
+                hash_2_chunks(&mut temp_arr[..], &arr[i - 1], &arr[i - 1]);
                 arr[i] = temp_arr;
             }
         }
@@ -33,7 +35,7 @@ fn compute_hashtree_size(mut chunk_count: usize, mut depth: usize) -> usize {
     ret * BYTES_PER_CHUNK
 }
 
-fn hash_2_chunks(out: &mut[u8], first: &[u8], second: &[u8]) {
+fn hash_2_chunks(out: &mut [u8], first: &[u8], second: &[u8]) {
     let mut chunk = Vec::with_capacity(2 * BYTES_PER_CHUNK);
     chunk.extend_from_slice(first);
     chunk.extend_from_slice(second);
@@ -47,8 +49,8 @@ fn sparse_hashtree_in_place(hash_tree: &mut [u8], chunks: &[u8], byte_length: us
     }
 
     let mut count = (chunks.len() + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
-    hash(hash_tree, chunks, count/ 2);
-    let (mut old_layer, mut hash_tree) = hash_tree.split_at_mut(chunks.len() /2);
+    hash(hash_tree, chunks, count / 2);
+    let (mut old_layer, mut hash_tree) = hash_tree.split_at_mut(chunks.len() / 2);
     for height in 1..depth {
         count = (old_layer.len() + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
         if count > 1 {
@@ -59,17 +61,21 @@ fn sparse_hashtree_in_place(hash_tree: &mut [u8], chunks: &[u8], byte_length: us
         } else {
             {
                 let (_, last) = hash_tree.split_at_mut(count * BYTES_PER_CHUNK / 2);
-                hash_2_chunks(last, &old_layer[old_layer.len() - BYTES_PER_CHUNK..], &ZERO_HASH_ARRAY[height]);
+                hash_2_chunks(
+                    last,
+                    &old_layer[old_layer.len() - BYTES_PER_CHUNK..],
+                    &ZERO_HASH_ARRAY[height],
+                );
             }
-            (old_layer, hash_tree) = hash_tree.split_at_mut( (count + 1) * BYTES_PER_CHUNK / 2);
+            (old_layer, hash_tree) = hash_tree.split_at_mut((count + 1) * BYTES_PER_CHUNK / 2);
         }
     }
 }
 
 // sparse_hashtree takes a byte slice and merkleizes it as a list of arrays of 32 bytes, with the
 // passed limit. It returns a vector of the full hashtree (except the leaves that are constantly
-// kept in the passed argument). 
-pub fn sparse_hashtree(chunks: &[u8], limit: usize) -> Vec<u8> {
+// kept in the passed argument).
+fn sparse_hashtree(chunks: &[u8], limit: usize) -> Vec<u8> {
     let chunk_count = (chunks.len() + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
     let depth = if limit == 0 {
         helpers::log2ceil(chunk_count)
@@ -77,15 +83,40 @@ pub fn sparse_hashtree(chunks: &[u8], limit: usize) -> Vec<u8> {
         helpers::log2ceil(limit)
     };
     if chunk_count == 0 {
-        return ZERO_HASH_ARRAY[depth].to_vec()
+        return ZERO_HASH_ARRAY[depth].to_vec();
     }
-
 
     let mut ret = vec![0u8; compute_hashtree_size(chunk_count, depth)];
     sparse_hashtree_in_place(ret.as_mut_slice(), chunks, chunks.len(), depth);
     ret
 }
 
+pub fn hash_tree_root_single_thread(chunks: &[u8], limit: usize) -> [u8; 32] {
+    let htr = sparse_hashtree(chunks, limit);
+    let mut array = [0u8; 32];
+    array.copy_from_slice(&htr[htr.len() - BYTES_PER_CHUNK..]);
+    array
+}
+
+// hash_tree_root returns the htr of the merkleization of the hashtree.
+pub fn hash_tree_root(chunks: &[u8], limit: usize, mut thread_count: usize) -> [u8; 32] {
+    if thread_count == 0 {
+        thread_count = num_cpus::get();
+    }
+    let chunks_len = chunks.len();
+    if thread_count < 2 || chunks_len < 4 * BYTES_PER_CHUNK {
+        return hash_tree_root_single_thread(chunks, limit);
+    }
+    let half_size = chunks_len.next_power_of_two() / 2;
+    let (beginning, ending) = chunks.split_at(half_size);
+    let (first, second) = rayon::join(
+        || hash_tree_root(beginning, 0, thread_count / 2),
+        || hash_tree_root(ending, 0, thread_count / 2),
+    );
+    let mut array = [0u8; 32];
+    hash_2_chunks(&mut array, &first, &second);
+    array
+}
 mod helpers {
     pub fn log2ceil(n: usize) -> usize {
         if n == 0 {
