@@ -91,21 +91,16 @@ fn sparse_hashtree(chunks: &[u8], limit: usize) -> Vec<u8> {
     ret
 }
 
-pub fn hash_tree_root_single_thread(chunks: &[u8], limit: usize) -> [u8; 32] {
-    let htr = sparse_hashtree(chunks, limit);
-    let mut array = [0u8; 32];
-    array.copy_from_slice(&htr[htr.len() - BYTES_PER_CHUNK..]);
-    array
-}
-
 // hash_tree_root returns the htr of the merkleization of the hashtree.
-pub fn hash_tree_root(chunks: &[u8], limit: usize, mut thread_count: usize) -> [u8; 32] {
+pub fn hash_tree_root(chunks: &[u8], limit: usize, mut thread_count: usize) -> Vec<u8> {
     if thread_count == 0 {
         thread_count = num_cpus::get();
     }
     let chunks_len = chunks.len();
     if thread_count < 2 || chunks_len < 4 * BYTES_PER_CHUNK {
-        return hash_tree_root_single_thread(chunks, limit);
+        let mut hash_tree = sparse_hashtree(chunks, limit);
+        hash_tree.drain(0..hash_tree.len() - BYTES_PER_CHUNK);
+        return hash_tree;
     }
     let half_size = chunks_len.next_power_of_two() / 2;
     let (beginning, ending) = chunks.split_at(half_size);
@@ -113,8 +108,8 @@ pub fn hash_tree_root(chunks: &[u8], limit: usize, mut thread_count: usize) -> [
         || hash_tree_root(beginning, 0, thread_count / 2),
         || hash_tree_root(ending, 0, thread_count / 2),
     );
-    let mut array = [0u8; 32];
-    hash_2_chunks(&mut array, &first, &second);
+    let mut array = vec![0u8; 32];
+    hash_2_chunks(array.as_mut_slice(), &first, &second);
     array
 }
 mod helpers {
